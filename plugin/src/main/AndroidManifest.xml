@@ -6,7 +6,7 @@
 
     <application>
         <service
-            android:name="com.yourname.musicplugin.MusicPlaybackService"
+            android:name="com.flux.musicplugin.MusicPlaybackService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
