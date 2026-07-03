@@ -1,0 +1,10 @@
+[config]
+
+name="MusicPlugin"
+binary_type="local"
+binary="MusicPlugin.aar"
+
+[dependencies]
+
+local=[]
+remote=[]
