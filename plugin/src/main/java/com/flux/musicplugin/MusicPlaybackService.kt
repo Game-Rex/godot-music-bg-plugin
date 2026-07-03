@@ -1,40 +1,71 @@
 package com.flux.musicplugin
 
-import androidx.media3.common.MediaItem
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.IBinder
+import org.godotengine.godot.Godot
+import org.godotengine.godot.plugin.GodotPlugin
+import org.godotengine.godot.plugin.UsedByGodot
 
-class MusicPlaybackService : MediaSessionService() {
+class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
 
-    private var player: ExoPlayer? = null
-    private var mediaSession: MediaSession? = null
+    private var service: MusicPlaybackService? = null
+    private var isBound = false
 
-    override fun onCreate() {
-        super.onCreate()
-        player = ExoPlayer.Builder(this).build()
-        mediaSession = MediaSession.Builder(this, player!!).build()
-    }
-
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
-        return mediaSession
-    }
-
-    override fun onDestroy() {
-        mediaSession?.run {
-            player?.release()
-            release()
-            mediaSession = null
+    private val connection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            val localBinder = binder as MusicPlaybackService.LocalBinder
+            service = localBinder.getService()
+            isBound = true
         }
-        super.onDestroy()
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            service = null
+            isBound = false
+        }
     }
 
-    fun playFile(path: String) {
-        val mediaItem = MediaItem.fromUri(path)
-        player?.setMediaItem(mediaItem)
-        player?.prepare()
-        player?.play()
+    override fun getPluginName(): String {
+        return "MusicPlugin"
     }
+
+    private fun ensureServiceStarted() {
+        val context = activity ?: return
+        val intent = Intent(context, MusicPlaybackService::class.java)
+        context.startForegroundService(intent)
+        context.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+    }
+
+    @UsedByGodot
+    fun playFile(path: String) {
+        if (!isBound) {
+            ensureServiceStarted()
+        }
+        service?.playFile(path)
+    }
+
+    @UsedByGodot
+    fun pause() {
+        service?.pause()
+    }
+
+    @UsedByGodot
+    fun resume() {
+        service?.resume()
+    }
+
+    @UsedByGodot
+    fun seekTo(positionMs: Long) {
+        service?.seekTo(positionMs)
+    }
+
+    @UsedByGodot
+    fun getCurrentPosition(): Long {
+        return service?.getCurrentPosition() ?: 0L
+    }
+}    }
 
     fun pause() {
         player?.pause()
