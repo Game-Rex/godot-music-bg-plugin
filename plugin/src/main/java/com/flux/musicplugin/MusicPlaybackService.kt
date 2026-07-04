@@ -5,7 +5,9 @@ import android.app.NotificationManager
 import android.content.Intent
 import android.os.Binder
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -18,6 +20,7 @@ class MusicPlaybackService : MediaSessionService() {
     private var player: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
     private var logCallback: ((String) -> Unit)? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     inner class LocalBinder : Binder() {
         fun getService(): MusicPlaybackService = this@MusicPlaybackService
@@ -90,22 +93,35 @@ class MusicPlaybackService : MediaSessionService() {
 
     fun playFile(path: String) {
         log("playFile called: $path")
-        val mediaItem = MediaItem.fromUri("file://$path")
-        player?.setMediaItem(mediaItem)
-        player?.prepare()
-        player?.play()
+        mainHandler.post {
+            try {
+                val mediaItem = MediaItem.fromUri("file://$path")
+                player?.setMediaItem(mediaItem)
+                player?.prepare()
+                player?.play()
+                log("Playback commands issued")
+            } catch (e: Exception) {
+                log("EXCEPTION: ${e.message}")
+            }
+        }
     }
 
     fun pause() {
-        player?.pause()
+        mainHandler.post {
+            player?.pause()
+        }
     }
 
     fun resume() {
-        player?.play()
+        mainHandler.post {
+            player?.play()
+        }
     }
 
     fun seekTo(positionMs: Long) {
-        player?.seekTo(positionMs)
+        mainHandler.post {
+            player?.seekTo(positionMs)
+        }
     }
 
     fun getCurrentPosition(): Long {
