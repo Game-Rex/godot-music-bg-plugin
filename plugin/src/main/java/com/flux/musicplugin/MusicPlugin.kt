@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
-import org.godotengine.godot.Dictionary
 import org.godotengine.godot.Godot
 import org.godotengine.godot.plugin.GodotPlugin
 import org.godotengine.godot.plugin.SignalInfo
@@ -15,6 +14,7 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
 
     private var service: MusicPlaybackService? = null
     private var isBound = false
+    private var pendingPath: String? = null
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -23,6 +23,11 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
             isBound = true
             service?.setLogCallback { message ->
                 emitSignal("plugin_log", message)
+            }
+
+            pendingPath?.let { path ->
+                service?.playFile(path)
+                pendingPath = null
             }
         }
 
@@ -51,10 +56,12 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
 
     @UsedByGodot
     fun playFile(path: String) {
-        if (!isBound) {
+        if (isBound) {
+            service?.playFile(path)
+        } else {
+            pendingPath = path
             ensureServiceStarted()
         }
-        service?.playFile(path)
     }
 
     @UsedByGodot
