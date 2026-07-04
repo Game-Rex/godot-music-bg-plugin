@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import androidx.core.app.NotificationCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -37,41 +38,30 @@ class MusicPlaybackService : MediaSessionService() {
     }
 
     override fun onCreate() {
-    super.onCreate()
-    player = ExoPlayer.Builder(this).build()
+        super.onCreate()
+        player = ExoPlayer.Builder(this).build()
 
-    player?.addListener(object : Player.Listener {
-        override fun onPlayerError(error: PlaybackException) {
-            log("ERROR: ${error.errorCodeName} - ${error.message}")
-        }
-
-        override fun onPlaybackStateChanged(state: Int) {
-            val stateName = when (state) {
-                Player.STATE_IDLE -> "IDLE"
-                Player.STATE_BUFFERING -> "BUFFERING"
-                Player.STATE_READY -> "READY"
-                Player.STATE_ENDED -> "ENDED"
-                else -> "UNKNOWN"
+        player?.addListener(object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                log("ERROR: ${error.errorCodeName} - ${error.message}")
             }
-            log("State: $stateName")
-        }
-    })
 
-    mediaSession = MediaSession.Builder(this, player!!).build()
-    createNotificationChannel()
-    startForegroundNotification()
-}
+            override fun onPlaybackStateChanged(state: Int) {
+                val stateName = when (state) {
+                    Player.STATE_IDLE -> "IDLE"
+                    Player.STATE_BUFFERING -> "BUFFERING"
+                    Player.STATE_READY -> "READY"
+                    Player.STATE_ENDED -> "ENDED"
+                    else -> "UNKNOWN"
+                }
+                log("State: $stateName")
+            }
+        })
 
-private fun startForegroundNotification() {
-    val notification = androidx.core.app.NotificationCompat.Builder(this, "music_playback_channel")
-        .setContentTitle("Music Player")
-        .setContentText("Playing")
-        .setSmallIcon(android.R.drawable.ic_media_play)
-        .setOngoing(true)
-        .build()
-
-    startForeground(1, notification)
-}
+        mediaSession = MediaSession.Builder(this, player!!).build()
+        createNotificationChannel()
+        startForegroundNotification()
+    }
 
     override fun onBind(intent: Intent?): IBinder? {
         super.onBind(intent)
@@ -101,6 +91,17 @@ private fun startForegroundNotification() {
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
+    }
+
+    private fun startForegroundNotification() {
+        val notification = NotificationCompat.Builder(this, "music_playback_channel")
+            .setContentTitle("Music Player")
+            .setContentText("Playing")
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setOngoing(true)
+            .build()
+
+        startForeground(1, notification)
     }
 
     fun playFile(path: String) {
