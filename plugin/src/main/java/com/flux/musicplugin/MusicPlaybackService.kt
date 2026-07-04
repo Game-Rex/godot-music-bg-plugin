@@ -60,7 +60,7 @@ class MusicPlaybackService : MediaSessionService() {
     }
 
     fun playFile(path: String) {
-        val mediaItem = MediaItem.fromUri(path)
+        val mediaItem = MediaItem.fromUri("file://$path")
         player?.setMediaItem(mediaItem)
         player?.prepare()
         player?.play()
