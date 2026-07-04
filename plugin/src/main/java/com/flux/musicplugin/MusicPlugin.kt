@@ -5,8 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import org.godotengine.godot.Dictionary
 import org.godotengine.godot.Godot
 import org.godotengine.godot.plugin.GodotPlugin
+import org.godotengine.godot.plugin.SignalInfo
 import org.godotengine.godot.plugin.UsedByGodot
 
 class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
@@ -19,6 +21,9 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
             val localBinder = binder as MusicPlaybackService.LocalBinder
             service = localBinder.getService()
             isBound = true
+            service?.setLogCallback { message ->
+                emitSignal("plugin_log", message)
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -29,6 +34,12 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
 
     override fun getPluginName(): String {
         return "MusicPlugin"
+    }
+
+    override fun getPluginSignals(): MutableSet<SignalInfo> {
+        val signals = mutableSetOf<SignalInfo>()
+        signals.add(SignalInfo("plugin_log", String::class.java))
+        return signals
     }
 
     private fun ensureServiceStarted() {
