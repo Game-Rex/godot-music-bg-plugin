@@ -140,4 +140,8 @@ class MusicPlaybackService : MediaSessionService() {
     fun getCurrentPosition(): Long {
         return player?.currentPosition ?: 0L
     }
+
+    fun getDuration(): Long {
+        return player?.duration ?: 0L
+    }
 }
