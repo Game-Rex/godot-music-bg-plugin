@@ -83,4 +83,9 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
     fun getCurrentPosition(): Long {
         return service?.getCurrentPosition() ?: 0L
     }
+
+    @UsedByGodot
+    fun getDuration(): Long {
+        return service?.getDuration() ?: 0L
+    }
 }
