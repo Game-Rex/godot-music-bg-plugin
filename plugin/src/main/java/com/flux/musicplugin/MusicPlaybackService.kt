@@ -39,7 +39,9 @@ class MusicPlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        log("MusicPlaybackService onCreate, instance: ${this.hashCode()}")
         player = ExoPlayer.Builder(this).build()
+        log("ExoPlayer created, instance: ${player.hashCode()}, on service instance: ${this.hashCode()}")
 
         player?.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
@@ -54,7 +56,7 @@ class MusicPlaybackService : MediaSessionService() {
                     Player.STATE_ENDED -> "ENDED"
                     else -> "UNKNOWN"
                 }
-                log("State: $stateName")
+                log("State: $stateName on service instance: ${this@MusicPlaybackService.hashCode()}")
             }
         })
 
@@ -65,6 +67,7 @@ class MusicPlaybackService : MediaSessionService() {
 
     override fun onBind(intent: Intent?): IBinder? {
         super.onBind(intent)
+        log("onBind called on service instance: ${this.hashCode()}")
         return binder
     }
 
@@ -73,6 +76,7 @@ class MusicPlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        log("onDestroy called on service instance: ${this.hashCode()}")
         mediaSession?.run {
             player?.release()
             release()
@@ -105,14 +109,14 @@ class MusicPlaybackService : MediaSessionService() {
     }
 
     fun playFile(path: String) {
-        log("playFile called: $path")
+        log("playFile called: $path on service instance: ${this.hashCode()}, player instance: ${player.hashCode()}")
         mainHandler.post {
             try {
                 val mediaItem = MediaItem.fromUri("file://$path")
                 player?.setMediaItem(mediaItem)
                 player?.prepare()
                 player?.play()
-                log("Playback commands issued")
+                log("Playback commands issued on player instance: ${player.hashCode()}")
             } catch (e: Exception) {
                 log("EXCEPTION: ${e.message}")
             }
@@ -139,13 +143,13 @@ class MusicPlaybackService : MediaSessionService() {
 
     fun getCurrentPosition(): Long {
         val pos = player?.currentPosition ?: 0L
-        log("getCurrentPosition called, returning: $pos")
+        log("getCurrentPosition on service instance ${this.hashCode()}, player instance=${player.hashCode()}, pos=$pos")
         return pos
     }
 
     fun getDuration(): Long {
         val dur = player?.duration ?: 0L
-        log("getDuration called, returning: $dur")
+        log("getDuration on service instance ${this.hashCode()}, player instance=${player.hashCode()}, dur=$dur")
         return dur
     }
 }
