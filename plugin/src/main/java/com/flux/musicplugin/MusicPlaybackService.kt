@@ -138,10 +138,14 @@ class MusicPlaybackService : MediaSessionService() {
     }
 
     fun getCurrentPosition(): Long {
-        return player?.currentPosition ?: 0L
+        val pos = player?.currentPosition ?: 0L
+        log("getCurrentPosition called, returning: $pos")
+        return pos
     }
 
     fun getDuration(): Long {
-        return player?.duration ?: 0L
+        val dur = player?.duration ?: 0L
+        log("getDuration called, returning: $dur")
+        return dur
     }
 }
