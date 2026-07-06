@@ -15,10 +15,7 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
     private var service: MusicPlaybackService? = null
     private var isBound = false
     private var pendingPath: String? = null
-
-    init {
-        android.util.Log.d("MusicPlugin", "MusicPlugin CONSTRUCTED: ${this.hashCode()}")
-    }
+    private var pendingAction: (() -> Unit)? = null
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -29,18 +26,22 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
                 emitSignal("plugin_log", message)
             }
 
-            emitSignal("plugin_log", "Service connected, plugin instance: " + this@MusicPlugin.hashCode())
+            emitSignal("plugin_log", "Service connected, plugin instance: " + this@MusicPlugin.hashCode() + ", bound service instance: " + service.hashCode())
 
             pendingPath?.let { path ->
                 service?.playFile(path)
                 pendingPath = null
             }
+            pendingAction?.let { action ->
+                action.invoke()
+                pendingAction = null
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
+            emitSignal("plugin_log", "Service DISCONNECTED, plugin instance: " + this@MusicPlugin.hashCode())
             service = null
             isBound = false
-            emitSignal("plugin_log", "Service DISCONNECTED, plugin instance: " + this@MusicPlugin.hashCode())
         }
     }
 
@@ -63,7 +64,7 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
 
     @UsedByGodot
     fun playFile(path: String) {
-        emitSignal("plugin_log", "playFile() on instance: " + this.hashCode() + " isBound=" + isBound)
+        emitSignal("plugin_log", "playFile() on plugin instance: " + this.hashCode() + " isBound=" + isBound + " service=" + (service?.hashCode() ?: "NULL"))
         if (isBound) {
             service?.playFile(path)
         } else {
@@ -74,14 +75,22 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
 
     @UsedByGodot
     fun pause() {
-        emitSignal("plugin_log", "pause() on instance: " + this.hashCode() + " isBound=" + isBound)
-        service?.pause()
+        emitSignal("plugin_log", "pause() on plugin instance: " + this.hashCode() + " isBound=" + isBound + " service=" + (service?.hashCode() ?: "NULL"))
+        if (isBound) {
+            service?.pause()
+        } else {
+            pendingAction = { service?.pause() }
+        }
     }
 
     @UsedByGodot
     fun resume() {
-        emitSignal("plugin_log", "resume() on instance: " + this.hashCode() + " isBound=" + isBound)
-        service?.resume()
+        emitSignal("plugin_log", "resume() on plugin instance: " + this.hashCode() + " isBound=" + isBound + " service=" + (service?.hashCode() ?: "NULL"))
+        if (isBound) {
+            service?.resume()
+        } else {
+            pendingAction = { service?.resume() }
+        }
     }
 
     @UsedByGodot
