@@ -165,4 +165,37 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
         latch.await(200, TimeUnit.MILLISECONDS)
         return result
     }
+
+    override fun getPluginSignals(): MutableSet<SignalInfo> {
+        val signals = mutableSetOf<SignalInfo>()
+        signals.add(SignalInfo("plugin_log", String::class.java))
+        signals.add(SignalInfo("album_art_ready", String::class.java, ByteArray::class.java))
+        return signals
+    }
+
+    @UsedByGodot
+    fun testAlbumArtExtraction(path: String) {
+        Thread {
+            try {
+                val retriever = android.media.MediaMetadataRetriever()
+                retriever.setDataSource(path)
+                val art = retriever.embeddedPicture
+                retriever.release()
+
+                mainHandler.post {
+                    if (art != null) {
+                        emitSignal("plugin_log", "Album art extracted, size: ${art.size} bytes")
+                        emitSignal("album_art_ready", path, art)
+                    } else {
+                        emitSignal("plugin_log", "No embedded album art found for: $path")
+                    }
+                }
+            } catch (e: Exception) {
+                mainHandler.post {
+                    emitSignal("plugin_log", "testAlbumArtExtraction EXCEPTION: ${e.message}")
+                }
+            }
+        }.start()
+    }
+
 }
