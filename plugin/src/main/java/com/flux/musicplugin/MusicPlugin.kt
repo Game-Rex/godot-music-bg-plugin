@@ -14,7 +14,6 @@ import org.godotengine.godot.plugin.UsedByGodot
 class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
 
     private var controller: MediaController? = null
-    private var pendingPath: String? = null
 
     override fun getPluginName(): String {
         return "MusicPlugin"
@@ -27,10 +26,13 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
     }
 
     private fun ensureControllerReady(onReady: () -> Unit) {
-        if (controller != null) {
+        if (controller != null && controller?.isConnected == true) {
+            emitSignal("plugin_log", "ensureControllerReady: reusing existing controller")
             onReady()
             return
         }
+
+        emitSignal("plugin_log", "ensureControllerReady: building new controller")
 
         val context = activity ?: return
         val sessionToken = SessionToken(context, ComponentName(context, MusicPlaybackService::class.java))
@@ -63,7 +65,10 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
 
     @UsedByGodot
     fun playFile(path: String) {
+        emitSignal("plugin_log", "playFile called: $path")
         ensureControllerReady {
+            controller?.stop()
+            controller?.clearMediaItems()
             val mediaItem = MediaItem.fromUri("file://$path")
             controller?.setMediaItem(mediaItem)
             controller?.prepare()
@@ -74,6 +79,7 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
 
     @UsedByGodot
     fun pause() {
+        emitSignal("plugin_log", "pause called")
         ensureControllerReady {
             controller?.pause()
         }
@@ -81,6 +87,7 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
 
     @UsedByGodot
     fun resume() {
+        emitSignal("plugin_log", "resume called")
         ensureControllerReady {
             controller?.play()
         }
