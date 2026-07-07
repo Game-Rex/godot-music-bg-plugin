@@ -12,6 +12,8 @@ import org.godotengine.godot.Godot
 import org.godotengine.godot.plugin.GodotPlugin
 import org.godotengine.godot.plugin.SignalInfo
 import org.godotengine.godot.plugin.UsedByGodot
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
 
@@ -131,12 +133,36 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
 
     @UsedByGodot
     fun getCurrentPosition(): Long {
-        return controller?.currentPosition ?: 0L
+        if (controller == null) return 0L
+        var result = 0L
+        val latch = CountDownLatch(1)
+        mainHandler.post {
+            try {
+                result = controller?.currentPosition ?: 0L
+            } catch (e: Exception) {
+                emitSignal("plugin_log", "getCurrentPosition THREW: ${e.message}")
+            }
+            latch.countDown()
+        }
+        latch.await(200, TimeUnit.MILLISECONDS)
+        return result
     }
 
     @UsedByGodot
     fun getDuration(): Long {
-        val dur = controller?.duration ?: 0L
-        return if (dur == androidx.media3.common.C.TIME_UNSET) 0L else dur
+        if (controller == null) return 0L
+        var result = 0L
+        val latch = CountDownLatch(1)
+        mainHandler.post {
+            try {
+                val dur = controller?.duration ?: 0L
+                result = if (dur == androidx.media3.common.C.TIME_UNSET) 0L else dur
+            } catch (e: Exception) {
+                emitSignal("plugin_log", "getDuration THREW: ${e.message}")
+            }
+            latch.countDown()
+        }
+        latch.await(200, TimeUnit.MILLISECONDS)
+        return result
     }
 }
