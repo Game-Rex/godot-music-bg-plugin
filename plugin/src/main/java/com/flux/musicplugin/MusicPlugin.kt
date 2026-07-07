@@ -1,10 +1,11 @@
 package com.flux.musicplugin
 
 import android.content.ComponentName
-import android.content.Context
-import android.content.Intent
-import android.content.ServiceConnection
-import android.os.IBinder
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.MoreExecutors
 import org.godotengine.godot.Godot
 import org.godotengine.godot.plugin.GodotPlugin
 import org.godotengine.godot.plugin.SignalInfo
@@ -12,38 +13,8 @@ import org.godotengine.godot.plugin.UsedByGodot
 
 class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
 
-    private var service: MusicPlaybackService? = null
-    private var isBound = false
+    private var controller: MediaController? = null
     private var pendingPath: String? = null
-    private var pendingAction: (() -> Unit)? = null
-
-    private val connection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-            val localBinder = binder as MusicPlaybackService.LocalBinder
-            service = localBinder.getService()
-            isBound = true
-            service?.setLogCallback { message ->
-                emitSignal("plugin_log", message)
-            }
-
-            emitSignal("plugin_log", "Service connected, plugin instance: " + this@MusicPlugin.hashCode() + ", bound service instance: " + service.hashCode())
-
-            pendingPath?.let { path ->
-                service?.playFile(path)
-                pendingPath = null
-            }
-            pendingAction?.let { action ->
-                action.invoke()
-                pendingAction = null
-            }
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            emitSignal("plugin_log", "Service DISCONNECTED, plugin instance: " + this@MusicPlugin.hashCode())
-            service = null
-            isBound = false
-        }
-    }
 
     override fun getPluginName(): String {
         return "MusicPlugin"
@@ -55,56 +26,81 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
         return signals
     }
 
-    private fun ensureServiceStarted() {
+    private fun ensureControllerReady(onReady: () -> Unit) {
+        if (controller != null) {
+            onReady()
+            return
+        }
+
         val context = activity ?: return
-        val intent = Intent(context, MusicPlaybackService::class.java)
-        context.startForegroundService(intent)
-        context.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+        val sessionToken = SessionToken(context, ComponentName(context, MusicPlaybackService::class.java))
+        val controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
+
+        controllerFuture.addListener({
+            controller = controllerFuture.get()
+            emitSignal("plugin_log", "MediaController connected: " + controller.hashCode())
+
+            controller?.addListener(object : Player.Listener {
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    emitSignal("plugin_log", "ERROR: ${error.errorCodeName} - ${error.message}")
+                }
+
+                override fun onPlaybackStateChanged(state: Int) {
+                    val stateName = when (state) {
+                        Player.STATE_IDLE -> "IDLE"
+                        Player.STATE_BUFFERING -> "BUFFERING"
+                        Player.STATE_READY -> "READY"
+                        Player.STATE_ENDED -> "ENDED"
+                        else -> "UNKNOWN"
+                    }
+                    emitSignal("plugin_log", "State: $stateName")
+                }
+            })
+
+            onReady()
+        }, MoreExecutors.directExecutor())
     }
 
     @UsedByGodot
     fun playFile(path: String) {
-        emitSignal("plugin_log", "playFile() on plugin instance: " + this.hashCode() + " isBound=" + isBound + " service=" + (service?.hashCode() ?: "NULL"))
-        if (isBound) {
-            service?.playFile(path)
-        } else {
-            pendingPath = path
-            ensureServiceStarted()
+        ensureControllerReady {
+            val mediaItem = MediaItem.fromUri("file://$path")
+            controller?.setMediaItem(mediaItem)
+            controller?.prepare()
+            controller?.play()
+            emitSignal("plugin_log", "playFile issued: $path")
         }
     }
 
     @UsedByGodot
     fun pause() {
-        emitSignal("plugin_log", "pause() on plugin instance: " + this.hashCode() + " isBound=" + isBound + " service=" + (service?.hashCode() ?: "NULL"))
-        if (isBound) {
-            service?.pause()
-        } else {
-            pendingAction = { service?.pause() }
+        ensureControllerReady {
+            controller?.pause()
         }
     }
 
     @UsedByGodot
     fun resume() {
-        emitSignal("plugin_log", "resume() on plugin instance: " + this.hashCode() + " isBound=" + isBound + " service=" + (service?.hashCode() ?: "NULL"))
-        if (isBound) {
-            service?.resume()
-        } else {
-            pendingAction = { service?.resume() }
+        ensureControllerReady {
+            controller?.play()
         }
     }
 
     @UsedByGodot
     fun seekTo(positionMs: Long) {
-        service?.seekTo(positionMs)
+        ensureControllerReady {
+            controller?.seekTo(positionMs)
+        }
     }
 
     @UsedByGodot
     fun getCurrentPosition(): Long {
-        return service?.getCurrentPosition() ?: 0L
+        return controller?.currentPosition ?: 0L
     }
 
     @UsedByGodot
     fun getDuration(): Long {
-        return service?.getDuration() ?: 0L
+        val dur = controller?.duration ?: 0L
+        return if (dur == androidx.media3.common.C.TIME_UNSET) 0L else dur
     }
 }
