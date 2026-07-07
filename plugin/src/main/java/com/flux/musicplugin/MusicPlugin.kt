@@ -1,6 +1,7 @@
 package com.flux.musicplugin
 
 import android.content.ComponentName
+import android.media.MediaMetadataRetriever
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.MediaItem
@@ -168,25 +169,39 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
     }
 
     @UsedByGodot
-    fun testAlbumArtExtraction(path: String) {
+    fun getFileDuration(path: String): Long {
+        return try {
+            val retriever = MediaMetadataRetriever()
+            retriever.setDataSource(path)
+            val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+            retriever.release()
+            durationStr?.toLongOrNull() ?: 0L
+        } catch (e: Exception) {
+            emitSignal("plugin_log", "getFileDuration EXCEPTION for $path: ${e.message}")
+            0L
+        }
+    }
+
+    @UsedByGodot
+    fun requestAlbumArt(path: String) {
         Thread {
             try {
-                val retriever = android.media.MediaMetadataRetriever()
+                val retriever = MediaMetadataRetriever()
                 retriever.setDataSource(path)
                 val art = retriever.embeddedPicture
                 retriever.release()
 
                 mainHandler.post {
                     if (art != null) {
-                        emitSignal("plugin_log", "Album art extracted, size: ${art.size} bytes")
                         emitSignal("album_art_ready", path, art)
                     } else {
-                        emitSignal("plugin_log", "No embedded album art found for: $path")
+                        emitSignal("album_art_ready", path, ByteArray(0))
                     }
                 }
             } catch (e: Exception) {
                 mainHandler.post {
-                    emitSignal("plugin_log", "testAlbumArtExtraction EXCEPTION: ${e.message}")
+                    emitSignal("plugin_log", "requestAlbumArt EXCEPTION for $path: ${e.message}")
+                    emitSignal("album_art_ready", path, ByteArray(0))
                 }
             }
         }.start()
