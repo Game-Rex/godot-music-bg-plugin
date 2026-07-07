@@ -28,7 +28,7 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
     override fun getPluginSignals(): MutableSet<SignalInfo> {
         val signals = mutableSetOf<SignalInfo>()
         signals.add(SignalInfo("plugin_log", String::class.java))
-        signals.add(SignalInfo("album_art_ready", ...))
+        signals.add(SignalInfo("album_art_ready", String::class.java, ByteArray::class.java))
         return signals
     }
 
@@ -167,13 +167,6 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
         return result
     }
 
-    override fun getPluginSignals(): MutableSet<SignalInfo> {
-        val signals = mutableSetOf<SignalInfo>()
-        signals.add(SignalInfo("plugin_log", String::class.java))
-        signals.add(SignalInfo("album_art_ready", String::class.java, ByteArray::class.java))
-        return signals
-    }
-
     @UsedByGodot
     fun testAlbumArtExtraction(path: String) {
         Thread {
@@ -198,5 +191,4 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
             }
         }.start()
     }
-
 }
