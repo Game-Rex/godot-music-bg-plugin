@@ -1,6 +1,8 @@
 package com.flux.musicplugin
 
 import android.content.ComponentName
+import android.os.Handler
+import android.os.Looper
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -14,6 +16,8 @@ import org.godotengine.godot.plugin.UsedByGodot
 class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
 
     private var controller: MediaController? = null
+    private var isBuilding = false
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun getPluginName(): String {
         return "MusicPlugin"
@@ -26,63 +30,65 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
     }
 
     private fun ensureControllerReady(onReady: () -> Unit) {
-        try {
-            emitSignal("plugin_log", "ensureControllerReady: start, controller=" + (if (controller == null) "NULL" else "NON-NULL"))
-
-            val isReady = try {
-                controller != null && controller?.isConnected == true
-            } catch (e: Exception) {
-                emitSignal("plugin_log", "isConnected check THREW: ${e.message}")
-                false
-            }
-
-            if (isReady) {
-                emitSignal("plugin_log", "ensureControllerReady: reusing existing controller")
-                onReady()
-                return
-            }
-
-            emitSignal("plugin_log", "ensureControllerReady: building new controller")
-
-            val context = activity
-            if (context == null) {
-                emitSignal("plugin_log", "ensureControllerReady: activity is NULL, aborting")
-                return
-            }
-
-            val sessionToken = SessionToken(context, ComponentName(context, MusicPlaybackService::class.java))
-            val controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
-
-            controllerFuture.addListener({
-                try {
-                    controller = controllerFuture.get()
-                    emitSignal("plugin_log", "MediaController connected: " + controller.hashCode())
-
-                    controller?.addListener(object : Player.Listener {
-                        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                            emitSignal("plugin_log", "ERROR: ${error.errorCodeName} - ${error.message}")
-                        }
-
-                        override fun onPlaybackStateChanged(state: Int) {
-                            val stateName = when (state) {
-                                Player.STATE_IDLE -> "IDLE"
-                                Player.STATE_BUFFERING -> "BUFFERING"
-                                Player.STATE_READY -> "READY"
-                                Player.STATE_ENDED -> "ENDED"
-                                else -> "UNKNOWN"
-                            }
-                            emitSignal("plugin_log", "State: $stateName")
-                        }
-                    })
-
+        mainHandler.post {
+            try {
+                if (controller != null) {
                     onReady()
-                } catch (e: Exception) {
-                    emitSignal("plugin_log", "controllerFuture.get() THREW: ${e.message}")
+                    return@post
                 }
-            }, MoreExecutors.directExecutor())
 
-        } catch (e: Exception) {
-            emitSignal("plugin_log", "ensureControllerReady OUTER EXCEPTION: ${e.message}")
+                if (isBuilding) {
+                    emitSignal("plugin_log", "Already building controller, skipping duplicate build")
+                    return@post
+                }
+
+                isBuilding = true
+                val context = activity
+                if (context == null) {
+                    emitSignal("plugin_log", "activity is NULL, aborting")
+                    isBuilding = false
+                    return@post
+                }
+
+                val sessionToken = SessionToken(context, ComponentName(context, MusicPlaybackService::class.java))
+                val controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
+
+                controllerFuture.addListener({
+                    mainHandler.post {
+                        try {
+                            controller = controllerFuture.get()
+                            isBuilding = false
+                            emitSignal("plugin_log", "MediaController connected: " + controller.hashCode())
+
+                            controller?.addListener(object : Player.Listener {
+                                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                                    emitSignal("plugin_log", "ERROR: ${error.errorCodeName} - ${error.message}")
+                                }
+
+                                override fun onPlaybackStateChanged(state: Int) {
+                                    val stateName = when (state) {
+                                        Player.STATE_IDLE -> "IDLE"
+                                        Player.STATE_BUFFERING -> "BUFFERING"
+                                        Player.STATE_READY -> "READY"
+                                        Player.STATE_ENDED -> "ENDED"
+                                        else -> "UNKNOWN"
+                                    }
+                                    emitSignal("plugin_log", "State: $stateName")
+                                }
+                            })
+
+                            onReady()
+                        } catch (e: Exception) {
+                            isBuilding = false
+                            emitSignal("plugin_log", "controllerFuture.get() THREW: ${e.message}")
+                        }
+                    }
+                }, MoreExecutors.directExecutor())
+
+            } catch (e: Exception) {
+                isBuilding = false
+                emitSignal("plugin_log", "ensureControllerReady OUTER EXCEPTION: ${e.message}")
+            }
         }
     }
 
