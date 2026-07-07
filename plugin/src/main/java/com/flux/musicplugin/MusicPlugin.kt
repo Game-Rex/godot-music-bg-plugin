@@ -28,6 +28,7 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
     override fun getPluginSignals(): MutableSet<SignalInfo> {
         val signals = mutableSetOf<SignalInfo>()
         signals.add(SignalInfo("plugin_log", String::class.java))
+        signals.add(SignalInfo("album_art_ready", ...))
         return signals
     }
 
