@@ -26,77 +26,64 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
     }
 
     private fun ensureControllerReady(onReady: () -> Unit) {
-    try {
-        emitSignal("plugin_log", "ensureControllerReady: start, controller=" + (if (controller == null) "NULL" else "NON-NULL"))
+        try {
+            emitSignal("plugin_log", "ensureControllerReady: start, controller=" + (if (controller == null) "NULL" else "NON-NULL"))
 
-        val isReady = try {
-            controller != null && controller?.isConnected == true
-        } catch (e: Exception) {
-            emitSignal("plugin_log", "ensureControllerReady: isConnected check THREW: ${e.message}")
-            false
-        }
-
-        if (isReady) {
-            emitSignal("plugin_log", "ensureControllerReady: reusing existing controller")
-            onReady()
-            return
-        }
-
-        emitSignal("plugin_log", "ensureControllerReady: building new controller")
-
-        val context = activity
-        if (context == null) {
-            emitSignal("plugin_log", "ensureControllerReady: activity is NULL, aborting")
-            return
-        }
-
-        val sessionToken = SessionToken(context, ComponentName(context, MusicPlaybackService::class.java))
-        val controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
-
-        controllerFuture.addListener({
-            try {
-                controller = controllerFuture.get()
-                emitSignal("plugin_log", "MediaController connected: " + controller.hashCode())
-                onReady()
+            val isReady = try {
+                controller != null && controller?.isConnected == true
             } catch (e: Exception) {
-                emitSignal("plugin_log", "controllerFuture.get() THREW: ${e.message}")
+                emitSignal("plugin_log", "isConnected check THREW: ${e.message}")
+                false
             }
-        }, MoreExecutors.directExecutor())
 
-    } catch (e: Exception) {
-        emitSignal("plugin_log", "ensureControllerReady OUTER EXCEPTION: ${e.message}")
-    }
-}
+            if (isReady) {
+                emitSignal("plugin_log", "ensureControllerReady: reusing existing controller")
+                onReady()
+                return
+            }
 
-        emitSignal("plugin_log", "ensureControllerReady: building new controller")
+            emitSignal("plugin_log", "ensureControllerReady: building new controller")
 
-        val context = activity ?: return
-        val sessionToken = SessionToken(context, ComponentName(context, MusicPlaybackService::class.java))
-        val controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
+            val context = activity
+            if (context == null) {
+                emitSignal("plugin_log", "ensureControllerReady: activity is NULL, aborting")
+                return
+            }
 
-        controllerFuture.addListener({
-            controller = controllerFuture.get()
-            emitSignal("plugin_log", "MediaController connected: " + controller.hashCode())
+            val sessionToken = SessionToken(context, ComponentName(context, MusicPlaybackService::class.java))
+            val controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
 
-            controller?.addListener(object : Player.Listener {
-                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                    emitSignal("plugin_log", "ERROR: ${error.errorCodeName} - ${error.message}")
+            controllerFuture.addListener({
+                try {
+                    controller = controllerFuture.get()
+                    emitSignal("plugin_log", "MediaController connected: " + controller.hashCode())
+
+                    controller?.addListener(object : Player.Listener {
+                        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                            emitSignal("plugin_log", "ERROR: ${error.errorCodeName} - ${error.message}")
+                        }
+
+                        override fun onPlaybackStateChanged(state: Int) {
+                            val stateName = when (state) {
+                                Player.STATE_IDLE -> "IDLE"
+                                Player.STATE_BUFFERING -> "BUFFERING"
+                                Player.STATE_READY -> "READY"
+                                Player.STATE_ENDED -> "ENDED"
+                                else -> "UNKNOWN"
+                            }
+                            emitSignal("plugin_log", "State: $stateName")
+                        }
+                    })
+
+                    onReady()
+                } catch (e: Exception) {
+                    emitSignal("plugin_log", "controllerFuture.get() THREW: ${e.message}")
                 }
+            }, MoreExecutors.directExecutor())
 
-                override fun onPlaybackStateChanged(state: Int) {
-                    val stateName = when (state) {
-                        Player.STATE_IDLE -> "IDLE"
-                        Player.STATE_BUFFERING -> "BUFFERING"
-                        Player.STATE_READY -> "READY"
-                        Player.STATE_ENDED -> "ENDED"
-                        else -> "UNKNOWN"
-                    }
-                    emitSignal("plugin_log", "State: $stateName")
-                }
-            })
-
-            onReady()
-        }, MoreExecutors.directExecutor())
+        } catch (e: Exception) {
+            emitSignal("plugin_log", "ensureControllerReady OUTER EXCEPTION: ${e.message}")
+        }
     }
 
     @UsedByGodot
