@@ -2,11 +2,8 @@ package com.flux.musicplugin
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.content.Intent
-import android.os.Binder
 import android.os.Build
 import android.os.Handler
-import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.media3.common.MediaItem
@@ -20,43 +17,19 @@ class MusicPlaybackService : MediaSessionService() {
 
     private var player: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
-    private var logCallback: ((String) -> Unit)? = null
     private val mainHandler = Handler(Looper.getMainLooper())
-
-    inner class LocalBinder : Binder() {
-        fun getService(): MusicPlaybackService = this@MusicPlaybackService
-    }
-
-    private val binder = LocalBinder()
-
-    fun setLogCallback(callback: (String) -> Unit) {
-        logCallback = callback
-    }
-
-    private fun log(message: String) {
-        logCallback?.invoke(message)
-    }
 
     override fun onCreate() {
         super.onCreate()
-        log("MusicPlaybackService onCreate, instance: ${this.hashCode()}")
         player = ExoPlayer.Builder(this).build()
-        log("ExoPlayer created, instance: ${player.hashCode()}, on service instance: ${this.hashCode()}")
 
         player?.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
-                log("ERROR: ${error.errorCodeName} - ${error.message}")
+                // Errors surface through MediaController listeners on the client side now
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                val stateName = when (state) {
-                    Player.STATE_IDLE -> "IDLE"
-                    Player.STATE_BUFFERING -> "BUFFERING"
-                    Player.STATE_READY -> "READY"
-                    Player.STATE_ENDED -> "ENDED"
-                    else -> "UNKNOWN"
-                }
-                log("State: $stateName on service instance: ${this@MusicPlaybackService.hashCode()}")
+                // State changes surface through MediaController listeners on the client side now
             }
         })
 
@@ -65,18 +38,11 @@ class MusicPlaybackService : MediaSessionService() {
         startForegroundNotification()
     }
 
-    override fun onBind(intent: Intent?): IBinder? {
-        super.onBind(intent)
-        log("onBind called on service instance: ${this.hashCode()}")
-        return binder
-    }
-
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
         return mediaSession
     }
 
     override fun onDestroy() {
-        log("onDestroy called on service instance: ${this.hashCode()}")
         mediaSession?.run {
             player?.release()
             release()
@@ -106,50 +72,5 @@ class MusicPlaybackService : MediaSessionService() {
             .build()
 
         startForeground(1, notification)
-    }
-
-    fun playFile(path: String) {
-        log("playFile called: $path on service instance: ${this.hashCode()}, player instance: ${player.hashCode()}")
-        mainHandler.post {
-            try {
-                val mediaItem = MediaItem.fromUri("file://$path")
-                player?.setMediaItem(mediaItem)
-                player?.prepare()
-                player?.play()
-                log("Playback commands issued on player instance: ${player.hashCode()}")
-            } catch (e: Exception) {
-                log("EXCEPTION: ${e.message}")
-            }
-        }
-    }
-
-    fun pause() {
-        mainHandler.post {
-            player?.pause()
-        }
-    }
-
-    fun resume() {
-        mainHandler.post {
-            player?.play()
-        }
-    }
-
-    fun seekTo(positionMs: Long) {
-        mainHandler.post {
-            player?.seekTo(positionMs)
-        }
-    }
-
-    fun getCurrentPosition(): Long {
-        val pos = player?.currentPosition ?: 0L
-        log("getCurrentPosition on service instance ${this.hashCode()}, player instance=${player.hashCode()}, pos=$pos")
-        return pos
-    }
-
-    fun getDuration(): Long {
-        val dur = player?.duration ?: 0L
-        log("getDuration on service instance ${this.hashCode()}, player instance=${player.hashCode()}, dur=$dur")
-        return dur
     }
 }
