@@ -26,11 +26,47 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
     }
 
     private fun ensureControllerReady(onReady: () -> Unit) {
-        if (controller != null && controller?.isConnected == true) {
+    try {
+        emitSignal("plugin_log", "ensureControllerReady: start, controller=" + (if (controller == null) "NULL" else "NON-NULL"))
+
+        val isReady = try {
+            controller != null && controller?.isConnected == true
+        } catch (e: Exception) {
+            emitSignal("plugin_log", "ensureControllerReady: isConnected check THREW: ${e.message}")
+            false
+        }
+
+        if (isReady) {
             emitSignal("plugin_log", "ensureControllerReady: reusing existing controller")
             onReady()
             return
         }
+
+        emitSignal("plugin_log", "ensureControllerReady: building new controller")
+
+        val context = activity
+        if (context == null) {
+            emitSignal("plugin_log", "ensureControllerReady: activity is NULL, aborting")
+            return
+        }
+
+        val sessionToken = SessionToken(context, ComponentName(context, MusicPlaybackService::class.java))
+        val controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
+
+        controllerFuture.addListener({
+            try {
+                controller = controllerFuture.get()
+                emitSignal("plugin_log", "MediaController connected: " + controller.hashCode())
+                onReady()
+            } catch (e: Exception) {
+                emitSignal("plugin_log", "controllerFuture.get() THREW: ${e.message}")
+            }
+        }, MoreExecutors.directExecutor())
+
+    } catch (e: Exception) {
+        emitSignal("plugin_log", "ensureControllerReady OUTER EXCEPTION: ${e.message}")
+    }
+}
 
         emitSignal("plugin_log", "ensureControllerReady: building new controller")
 
