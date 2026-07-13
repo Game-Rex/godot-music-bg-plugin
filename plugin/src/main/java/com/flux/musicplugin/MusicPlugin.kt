@@ -1,9 +1,14 @@
 package com.flux.musicplugin
 
+import android.app.Activity
 import android.content.ComponentName
+import android.content.Intent
 import android.media.MediaMetadataRetriever
+import android.net.Uri
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.provider.DocumentsContract
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -21,6 +26,7 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
     private var controller: MediaController? = null
     private var isBuilding = false
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val PICK_FOLDER_REQUEST_CODE = 42
 
     override fun getPluginName(): String {
         return "MusicPlugin"
@@ -30,6 +36,8 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
         val signals = mutableSetOf<SignalInfo>()
         signals.add(SignalInfo("plugin_log", String::class.java))
         signals.add(SignalInfo("album_art_ready", String::class.java, ByteArray::class.java))
+        signals.add(SignalInfo("folder_picked", String::class.java))
+        signals.add(SignalInfo("folder_pick_failed", String::class.java))
         return signals
     }
 
@@ -205,5 +213,68 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
                 }
             }
         }.start()
+    }
+
+    @UsedByGodot
+    fun pickMusicFolder() {
+        val context = activity ?: return
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+        context.startActivityForResult(intent, PICK_FOLDER_REQUEST_CODE)
+    }
+
+    override fun onMainActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode != PICK_FOLDER_REQUEST_CODE) return
+
+        if (resultCode != Activity.RESULT_OK || data == null) {
+            emitSignal("plugin_log", "Folder pick cancelled or failed")
+            return
+        }
+
+        val treeUri = data.data
+        if (treeUri == null) {
+            emitSignal("folder_pick_failed", "No folder data returned")
+            return
+        }
+
+        val context = activity
+        if (context == null) {
+            emitSignal("folder_pick_failed", "No activity context")
+            return
+        }
+
+        try {
+            context.contentResolver.takePersistableUriPermission(
+                treeUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (e: Exception) {
+            emitSignal("plugin_log", "takePersistableUriPermission failed: ${e.message}")
+        }
+
+        val realPath = convertTreeUriToPath(treeUri)
+        if (realPath != null) {
+            emitSignal("folder_picked", realPath)
+        } else {
+            emitSignal("folder_pick_failed", "Unsupported storage location (likely SD card)")
+        }
+    }
+
+    private fun convertTreeUriToPath(treeUri: Uri): String? {
+        return try {
+            val docId = DocumentsContract.getDocumentId(treeUri)
+            val split = docId.split(":")
+            if (split.size < 2) return null
+            val type = split[0]
+            val relativePath = split[1]
+
+            if ("primary".equals(type, ignoreCase = true)) {
+                Environment.getExternalStorageDirectory().toString() + "/" + relativePath
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            emitSignal("plugin_log", "convertTreeUriToPath EXCEPTION: ${e.message}")
+            null
+        }
     }
 }
