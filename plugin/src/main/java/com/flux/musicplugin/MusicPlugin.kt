@@ -261,7 +261,7 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
 
     private fun convertTreeUriToPath(treeUri: Uri): String? {
         return try {
-            val docId = DocumentsContract.getDocumentId(treeUri)
+            val docId = DocumentsContract.getTreeDocumentId(treeUri)
             val split = docId.split(":")
             if (split.size < 2) return null
             val type = split[0]
