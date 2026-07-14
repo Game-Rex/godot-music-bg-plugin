@@ -38,6 +38,7 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
         signals.add(SignalInfo("album_art_ready", String::class.java, ByteArray::class.java))
         signals.add(SignalInfo("folder_picked", String::class.java))
         signals.add(SignalInfo("folder_pick_failed", String::class.java))
+        signals.add(SignalInfo("all_songs_ready", String::class.java))
         return signals
     }
 
@@ -276,5 +277,61 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
             emitSignal("plugin_log", "convertTreeUriToPath EXCEPTION: ${e.message}")
             null
         }
+    }
+
+    @UsedByGodot
+    fun getAllDeviceSongs() {
+        Thread {
+            try {
+                val context = activity
+                if (context == null) {
+                    mainHandler.post { emitSignal("all_songs_ready", "[]") }
+                    return@Thread
+                }
+
+                val jsonArray = org.json.JSONArray()
+                val projection = arrayOf(
+                    android.provider.MediaStore.Audio.Media.DATA,
+                    android.provider.MediaStore.Audio.Media.DISPLAY_NAME,
+                    android.provider.MediaStore.Audio.Media.DURATION
+                )
+                val selection = "${android.provider.MediaStore.Audio.Media.IS_MUSIC} != 0"
+
+                val cursor = context.contentResolver.query(
+                    android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                    projection,
+                    selection,
+                    null,
+                    null
+                )
+
+                cursor?.use {
+                    val dataCol = it.getColumnIndexOrThrow(android.provider.MediaStore.Audio.Media.DATA)
+                    val nameCol = it.getColumnIndexOrThrow(android.provider.MediaStore.Audio.Media.DISPLAY_NAME)
+                    val durCol = it.getColumnIndexOrThrow(android.provider.MediaStore.Audio.Media.DURATION)
+
+                    while (it.moveToNext()) {
+                        val path = it.getString(dataCol) ?: continue
+                        val name = it.getString(nameCol) ?: path.substringAfterLast("/")
+                        val duration = it.getLong(durCol)
+
+                        val obj = org.json.JSONObject()
+                        obj.put("path", path)
+                        obj.put("name", name)
+                        obj.put("duration_ms", duration)
+                        jsonArray.put(obj)
+                    }
+                }
+
+                mainHandler.post {
+                    emitSignal("all_songs_ready", jsonArray.toString())
+                }
+            } catch (e: Exception) {
+                mainHandler.post {
+                    emitSignal("plugin_log", "getAllDeviceSongs EXCEPTION: ${e.message}")
+                    emitSignal("all_songs_ready", "[]")
+                }
+            }
+        }.start()
     }
 }
