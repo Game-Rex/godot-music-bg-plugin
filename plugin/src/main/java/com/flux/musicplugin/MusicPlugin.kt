@@ -27,6 +27,7 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
     private var isBuilding = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private val PICK_FOLDER_REQUEST_CODE = 42
+    private val PICK_IMAGE_REQUEST_CODE = 43
 
     override fun getPluginName(): String {
         return "MusicPlugin"
@@ -39,6 +40,8 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
         signals.add(SignalInfo("folder_picked", String::class.java))
         signals.add(SignalInfo("folder_pick_failed", String::class.java))
         signals.add(SignalInfo("all_songs_ready", String::class.java))
+        signals.add(SignalInfo("image_picked", ByteArray::class.java))
+        signals.add(SignalInfo("image_pick_failed", String::class.java))
         return signals
     }
 
@@ -223,9 +226,22 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
         context.startActivityForResult(intent, PICK_FOLDER_REQUEST_CODE)
     }
 
-    override fun onMainActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode != PICK_FOLDER_REQUEST_CODE) return
+    @UsedByGodot
+    fun pickBackgroundImage() {
+        val context = activity ?: return
+        val intent = Intent(Intent.ACTION_GET_CONTENT)
+        intent.type = "image/*"
+        context.startActivityForResult(intent, PICK_IMAGE_REQUEST_CODE)
+    }
 
+    override fun onMainActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        when (requestCode) {
+            PICK_FOLDER_REQUEST_CODE -> handleFolderPickResult(resultCode, data)
+            PICK_IMAGE_REQUEST_CODE -> handleImagePickResult(resultCode, data)
+        }
+    }
+
+    private fun handleFolderPickResult(resultCode: Int, data: Intent?) {
         if (resultCode != Activity.RESULT_OK || data == null) {
             emitSignal("plugin_log", "Folder pick cancelled or failed")
             return
@@ -258,6 +274,45 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
         } else {
             emitSignal("folder_pick_failed", "Unsupported storage location (likely SD card)")
         }
+    }
+
+    private fun handleImagePickResult(resultCode: Int, data: Intent?) {
+        if (resultCode != Activity.RESULT_OK || data == null) {
+            emitSignal("plugin_log", "Image pick cancelled or failed")
+            return
+        }
+
+        val imageUri = data.data
+        if (imageUri == null) {
+            emitSignal("image_pick_failed", "No image data returned")
+            return
+        }
+
+        val context = activity
+        if (context == null) {
+            emitSignal("image_pick_failed", "No activity context")
+            return
+        }
+
+        Thread {
+            try {
+                val inputStream = context.contentResolver.openInputStream(imageUri)
+                val bytes = inputStream?.readBytes()
+                inputStream?.close()
+
+                mainHandler.post {
+                    if (bytes != null) {
+                        emitSignal("image_picked", bytes)
+                    } else {
+                        emitSignal("image_pick_failed", "Could not read image data")
+                    }
+                }
+            } catch (e: Exception) {
+                mainHandler.post {
+                    emitSignal("image_pick_failed", "EXCEPTION: ${e.message}")
+                }
+            }
+        }.start()
     }
 
     private fun convertTreeUriToPath(treeUri: Uri): String? {
@@ -293,7 +348,8 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
                 val projection = arrayOf(
                     android.provider.MediaStore.Audio.Media.DATA,
                     android.provider.MediaStore.Audio.Media.DISPLAY_NAME,
-                    android.provider.MediaStore.Audio.Media.DURATION
+                    android.provider.MediaStore.Audio.Media.DURATION,
+                    android.provider.MediaStore.Audio.Media.DATE_ADDED
                 )
                 val selection = "${android.provider.MediaStore.Audio.Media.IS_MUSIC} != 0"
 
@@ -309,16 +365,19 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
                     val dataCol = it.getColumnIndexOrThrow(android.provider.MediaStore.Audio.Media.DATA)
                     val nameCol = it.getColumnIndexOrThrow(android.provider.MediaStore.Audio.Media.DISPLAY_NAME)
                     val durCol = it.getColumnIndexOrThrow(android.provider.MediaStore.Audio.Media.DURATION)
+                    val dateCol = it.getColumnIndexOrThrow(android.provider.MediaStore.Audio.Media.DATE_ADDED)
 
                     while (it.moveToNext()) {
                         val path = it.getString(dataCol) ?: continue
                         val name = it.getString(nameCol) ?: path.substringAfterLast("/")
                         val duration = it.getLong(durCol)
+                        val dateAdded = it.getLong(dateCol)
 
                         val obj = org.json.JSONObject()
                         obj.put("path", path)
                         obj.put("name", name)
                         obj.put("duration_ms", duration)
+                        obj.put("date_added", dateAdded)
                         jsonArray.put(obj)
                     }
                 }
