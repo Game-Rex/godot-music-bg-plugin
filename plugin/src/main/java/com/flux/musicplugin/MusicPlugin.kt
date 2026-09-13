@@ -411,6 +411,21 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
             REQUEST_AUDIO_PERMISSION_CODE
         )
     }
+    @UsedByGodot
+    fun openAppSettings() {
+        val context = activity
+        if (context == null) {
+            emitSignal("plugin_log", "openAppSettings: activity is NULL")
+            return
+            }
+        try {
+            val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            intent.data = Uri.parse("package:" + context.packageName)
+            context.startActivity(intent)
+            } catch (e: Exception) {
+                emitSignal("plugin_log", "openAppSettings EXCEPTION: ${e.message}")
+                }
+    }
 
     @UsedByGodot
     fun hasAudioPermission(): Boolean {
