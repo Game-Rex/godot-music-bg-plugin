@@ -3,12 +3,14 @@ package com.flux.musicplugin
 import android.app.Activity
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.DocumentsContract
+import androidx.core.app.ActivityCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -28,6 +30,7 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val PICK_FOLDER_REQUEST_CODE = 42
     private val PICK_IMAGE_REQUEST_CODE = 43
+    private val REQUEST_AUDIO_PERMISSION_CODE = 2025
 
     override fun getPluginName(): String {
         return "MusicPlugin"
@@ -42,6 +45,7 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
         signals.add(SignalInfo("all_songs_ready", String::class.java))
         signals.add(SignalInfo("image_picked", ByteArray::class.java))
         signals.add(SignalInfo("image_pick_failed", String::class.java))
+        signals.add(SignalInfo("permission_result", Boolean::class.javaObjectType))
         return signals
     }
 
@@ -392,5 +396,37 @@ class MusicPlugin(godot: Godot) : GodotPlugin(godot) {
                 }
             }
         }.start()
+    }
+
+    @UsedByGodot
+    fun requestAudioPermission() {
+        val context = activity
+        if (context == null) {
+            emitSignal("plugin_log", "requestAudioPermission: activity is NULL")
+            return
+        }
+        ActivityCompat.requestPermissions(
+            context,
+            arrayOf("android.permission.READ_MEDIA_AUDIO"),
+            REQUEST_AUDIO_PERMISSION_CODE
+        )
+    }
+
+    @UsedByGodot
+    fun hasAudioPermission(): Boolean {
+        val context = activity ?: return false
+        return androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            "android.permission.READ_MEDIA_AUDIO"
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    override fun onMainRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        if (requestCode != REQUEST_AUDIO_PERMISSION_CODE) return
+        if (permissions.isEmpty() || permissions[0] != "android.permission.READ_MEDIA_AUDIO") return
+
+        val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+        emitSignal("plugin_log", "permission_result: $granted")
+        emitSignal("permission_result", granted)
     }
 }
